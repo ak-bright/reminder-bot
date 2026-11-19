@@ -1,11 +1,17 @@
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from reminderbot.channels.base import Button, Channel
 from reminderbot.channels.router import Router
 from reminderbot.clock import FakeClock
-from reminderbot.core.users import InMemoryUserStore, UserService
+from reminderbot.core.reminders import ReminderService
+from reminderbot.core.users import UserService
+from reminderbot.db.base import Base
+from reminderbot.db.reminder_store import SqlReminderStore
+from reminderbot.db.session import create_engine, create_session_factory
+from reminderbot.db.user_store import SqlUserStore
 
 
 class FakeChannel(Channel):
@@ -39,10 +45,47 @@ def channel() -> FakeChannel:
 
 
 @pytest.fixture
-def users() -> UserService:
-    return UserService(InMemoryUserStore(), default_timezone="Africa/Accra")
+def users(session_factory, clock) -> UserService:
+    return UserService(SqlUserStore(session_factory, clock), default_timezone="Africa/Accra")
 
 
 @pytest.fixture
-def router(users: UserService, clock: FakeClock) -> Router:
-    return Router(users, clock)
+def reminders(session_factory, clock) -> ReminderService:
+    return ReminderService(SqlReminderStore(session_factory), clock)
+
+
+@pytest.fixture
+def router(users: UserService, reminders: ReminderService, clock: FakeClock) -> Router:
+    return Router(users, reminders, clock)
+
+
+# --- Database -------------------------------------------------------------------
+# Each test gets its own fresh SQLite file in a temporary folder. (A file rather
+# than ":memory:", because every new connection to ":memory:" is an empty database.)
+
+
+@pytest.fixture
+def database_url(tmp_path) -> str:
+    return f"sqlite+aiosqlite:///{(tmp_path / 'test.db').as_posix()}"
+
+
+@pytest.fixture
+async def engine(database_url):
+    engine = create_engine(database_url)
+    async with engine.begin() as conn:
+        # create_all is quicker than running migrations; test_migrations.py checks
+        # that the migrations build exactly the same tables.
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
+
+
+@pytest.fixture
+def session_factory(engine):
+    return create_session_factory(engine)
+
+
+@pytest.fixture
+async def session(session_factory) -> AsyncSession:
+    async with session_factory() as session:
+        yield session

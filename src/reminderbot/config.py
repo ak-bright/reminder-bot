@@ -9,6 +9,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from reminderbot.core.timezones import is_valid_timezone
 
+DEFAULT_DATABASE_URL = "sqlite+aiosqlite:///./reminderbot.db"
+
+
+class DatabaseSettings(BaseSettings):
+    """Only the database URL. Used by the `alembic` command, which shouldn't need
+    a Telegram token just to update the database."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    database_url: str = DEFAULT_DATABASE_URL
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -24,8 +35,8 @@ class Settings(BaseSettings):
     ai_max_input_chars: int = 2000
     ai_max_output_tokens: int = 1024
 
-    # Database (used from M2)
-    database_url: str = "sqlite+aiosqlite:///./reminderbot.db"
+    # Database. SQLite file in development; Postgres URL in production (M8).
+    database_url: str = DEFAULT_DATABASE_URL
 
     # Behaviour
     default_timezone: str = "Africa/Accra"

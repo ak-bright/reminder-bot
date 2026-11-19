@@ -42,3 +42,10 @@ def test_channel_agnostic_files_do_not_import_telegram():
     for name in ("base.py", "router.py"):
         for module in imported_modules(SRC / "channels" / name):
             assert not module.startswith("telegram"), f"{name} imports {module}"
+
+
+@pytest.mark.parametrize("path", python_files("scheduler"), ids=lambda p: p.name)
+def test_scheduler_does_not_import_telegram(path):
+    # The scheduler sends through the Channel interface, so it works for WhatsApp too.
+    for module in imported_modules(path):
+        assert not module.startswith(("telegram", "reminderbot.channels.telegram"))

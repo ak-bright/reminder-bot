@@ -1,8 +1,7 @@
 """Users and their settings.
 
-In M1 users are kept in memory (InMemoryUserStore), so they are forgotten when
-the bot restarts. M2 adds a database-backed store with the same methods, and
-nothing else needs to change.
+UserService only talks to a UserStore (the Protocol below). The real one is
+SqlUserStore in db/user_store.py, so core/ never has to know about the database.
 """
 
 from dataclasses import dataclass
@@ -19,25 +18,15 @@ class UserProfile:
     timezone: str
     language: str = "en"
     # True while we're waiting for the user to type a timezone name.
-    # (Temporary M1 state; from M2 this kind of state lives in `pending_actions`.)
+    # The database store keeps this as a row in `pending_actions`.
     awaiting_timezone: bool = False
     is_new: bool = True  # False once onboarding (timezone choice) is finished
+    id: int | None = None  # database id; None until the user is saved
 
 
 class UserStore(Protocol):
     async def get(self, channel: str, channel_user_id: str) -> UserProfile | None: ...
     async def save(self, user: UserProfile) -> None: ...
-
-
-class InMemoryUserStore:
-    def __init__(self) -> None:
-        self._users: dict[tuple[str, str], UserProfile] = {}
-
-    async def get(self, channel: str, channel_user_id: str) -> UserProfile | None:
-        return self._users.get((channel, channel_user_id))
-
-    async def save(self, user: UserProfile) -> None:
-        self._users[(user.channel, user.channel_user_id)] = user
 
 
 class UserService:

@@ -86,6 +86,7 @@ async def test_invalid_typed_timezone_keeps_asking(router, channel, users):
     assert user.timezone == "Africa/Accra"
 
     await router.handle(msg("Lagos"), channel)
+    user = await users.get_or_create("fake", "42", "Ama")
     assert user.timezone == "Africa/Lagos"
     assert not user.awaiting_timezone
 

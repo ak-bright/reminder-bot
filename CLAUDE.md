@@ -15,7 +15,9 @@ read and understand. Keep things simple and use short comments for non-obvious l
 ```
 python -m venv .venv && .venv\Scripts\activate    # Windows (source .venv/bin/activate on Linux/Mac)
 pip install -e ".[dev]"
-python -m reminderbot          # run the bot (polling mode, needs .env)
+python -m reminderbot          # run the bot (polling mode, needs .env); runs migrations first
+alembic upgrade head           # apply migrations by hand
+alembic revision --autogenerate -m "..."   # new migration after changing db/models.py
 pytest -q                      # tests
 ruff check . && ruff format --check .
 ```

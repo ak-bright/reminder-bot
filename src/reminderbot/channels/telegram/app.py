@@ -1,5 +1,7 @@
 """Build the python-telegram-bot Application and run it in polling mode."""
 
+from collections.abc import Awaitable, Callable
+
 from telegram import Update
 from telegram.ext import Application, CallbackQueryHandler, MessageHandler, filters
 
@@ -7,8 +9,18 @@ from reminderbot.channels.router import Router
 from reminderbot.channels.telegram.handlers import make_handlers
 
 
-def build_application(token: str, router: Router) -> Application:
-    app = Application.builder().token(token).build()
+def build_application(
+    token: str,
+    router: Router,
+    on_startup: Callable[[Application], Awaitable[None]] | None = None,
+    on_shutdown: Callable[[Application], Awaitable[None]] | None = None,
+) -> Application:
+    builder = Application.builder().token(token)
+    if on_startup is not None:
+        builder = builder.post_init(on_startup)  # runs once, after connecting to Telegram
+    if on_shutdown is not None:
+        builder = builder.post_shutdown(on_shutdown)  # runs once when the bot stops
+    app = builder.build()
     on_update, on_error = make_handlers(router)
 
     # Private chats only (decision from planning). All text, commands included,
