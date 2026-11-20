@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from reminderbot.channels.base import Channel
+from reminderbot.channels.replies import alert_buttons
 from reminderbot.clock import Clock
 from reminderbot.core.formatting import format_datetime, format_duration
 from reminderbot.core.models import ReminderKind, ReminderStatus
@@ -122,7 +123,8 @@ class Scheduler:
         if channel is None:
             raise LookupError(f"no channel called {user.channel!r}")
         # Private chats only, so the chat to write to has the same id as the user.
-        await channel.send_message(user.channel_user_id, alert_text(alert, now))
+        buttons = alert_buttons(alert.reminder.id, user.language)
+        await channel.send_buttons(user.channel_user_id, alert_text(alert, now), buttons)
 
     @staticmethod
     def _retry_time(attempts: int, now: datetime) -> datetime | None:

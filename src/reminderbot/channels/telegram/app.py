@@ -2,11 +2,15 @@
 
 from collections.abc import Awaitable, Callable
 
-from telegram import Update
+from telegram import Bot, BotCommand, Update
 from telegram.ext import Application, CallbackQueryHandler, MessageHandler, filters
 
 from reminderbot.channels.router import Router
 from reminderbot.channels.telegram.handlers import make_handlers
+from reminderbot.strings import t
+
+# Shown in Telegram's "/" menu, in this order.
+MENU_COMMANDS = ["list", "today", "week", "done", "edit", "delete", "remind", "timezone", "help"]
 
 
 def build_application(
@@ -30,6 +34,11 @@ def build_application(
     app.add_handler(CallbackQueryHandler(on_update))
     app.add_error_handler(on_error)
     return app
+
+
+async def register_commands(bot: Bot) -> None:
+    """Fill Telegram's "/" menu so users can pick a command instead of typing it."""
+    await bot.set_my_commands([BotCommand(name, t(f"menu.{name}")) for name in MENU_COMMANDS])
 
 
 def run_polling(app: Application) -> None:

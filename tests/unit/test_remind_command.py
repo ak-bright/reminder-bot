@@ -44,7 +44,7 @@ async def test_remind_saves_and_confirms(router, channel, session_factory):
 async def test_confirmation_has_a_delete_button(router, channel, session_factory):
     await router.handle(msg("/remind tomorrow 17:00 | Quiz"), channel)
     [reminder] = await all_reminders(session_factory)
-    [[button]] = channel.last["buttons"]
+    [[_edit, button]] = channel.last["buttons"]
     assert button.label == t("button.delete")
     assert button.data == f"del:{reminder.id}"
 
@@ -110,7 +110,7 @@ async def test_description_too_long(router, channel, session_factory):
 
 async def test_delete_button_deletes_and_cancels_alerts(router, channel, session_factory):
     await router.handle(msg("/remind 2026-11-21 17:00 | Essay"), channel)
-    [[button]] = channel.last["buttons"]
+    [[_edit, button]] = channel.last["buttons"]
 
     await router.handle(press(button.data), channel)
     assert channel.last["text"] == t("remind.deleted")
@@ -124,7 +124,7 @@ async def test_delete_button_deletes_and_cancels_alerts(router, channel, session
 
 async def test_cannot_delete_someone_elses_reminder(router, channel, session_factory):
     await router.handle(msg("/remind 2026-11-21 17:00 | Ama's essay", user="1"), channel)
-    [[button]] = channel.last["buttons"]
+    [[_edit, button]] = channel.last["buttons"]
 
     await router.handle(press(button.data, user="2"), channel)  # Kofi sends Ama's button data
     assert channel.last["text"] == t("remind.already_gone")

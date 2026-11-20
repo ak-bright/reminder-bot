@@ -30,3 +30,4 @@ class PendingKind(StrEnum):
     """What the bot is waiting for the user to answer (stored in `pending_actions`)."""
 
     AWAIT_TIMEZONE = "await_timezone"  # user pressed "Other" and must type a timezone
+    CLARIFY_REMINDER = "clarify_reminder"  # we asked "which day do you mean?" (core/clarify.py)

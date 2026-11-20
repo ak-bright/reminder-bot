@@ -1,9 +1,11 @@
 """The database-backed UserStore, including the bot surviving a restart."""
 
 from reminderbot.channels.base import IncomingEvent
+from reminderbot.channels.natural import NaturalLanguage
 from reminderbot.channels.router import Router
 from reminderbot.core.reminders import ReminderService
 from reminderbot.core.users import UserProfile, UserService
+from reminderbot.db.clarification_store import SqlClarificationStore
 from reminderbot.db.reminder_store import SqlReminderStore
 from reminderbot.db.user_store import SqlUserStore
 from reminderbot.strings import t
@@ -24,7 +26,8 @@ def new_bot(session_factory, clock) -> tuple[Router, UserService]:
     """Everything a fresh bot process would build. Calling it again = a restart."""
     users = UserService(SqlUserStore(session_factory, clock), default_timezone="Africa/Accra")
     reminders = ReminderService(SqlReminderStore(session_factory), clock)
-    return Router(users, reminders, clock), users
+    natural = NaturalLanguage(None, reminders, SqlClarificationStore(session_factory), clock, 2000)
+    return Router(users, reminders, natural, clock), users
 
 
 async def test_save_and_load_roundtrip(session_factory, clock):

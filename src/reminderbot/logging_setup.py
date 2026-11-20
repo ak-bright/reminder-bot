@@ -26,6 +26,7 @@ def setup_logging(level: str = "INFO", json: bool = False) -> None:
     # httpx (used by python-telegram-bot) logs every request URL at INFO, and Telegram
     # URLs contain the bot token. Keep it quiet.
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpx2").setLevel(logging.WARNING)  # used by the anthropic SDK
 
     renderer = structlog.processors.JSONRenderer() if json else structlog.dev.ConsoleRenderer()
     structlog.configure(

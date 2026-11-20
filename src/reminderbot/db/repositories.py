@@ -131,6 +131,22 @@ class AlertRepo:
         await self._session.flush()
         return alerts
 
+    async def schedule(self, reminder_id: int, send_at: datetime) -> None:
+        """Make sure there is a pending alert at `send_at`.
+
+        A reminder may have only one alert per moment (unique constraint), so if an
+        old one exists at that exact time (sent or cancelled), we reuse that row.
+        """
+        query = select(Alert).where(Alert.reminder_id == reminder_id, Alert.send_at_utc == send_at)
+        alert = await self._session.scalar(query)
+        if alert is None:
+            self._session.add(Alert(reminder_id=reminder_id, send_at_utc=send_at))
+        else:
+            alert.status = AlertStatus.PENDING
+            alert.attempts = 0
+            alert.sent_at = alert.next_attempt_at = alert.claimed_at = alert.last_error = None
+        await self._session.flush()
+
     async def list_for_reminder(self, reminder_id: int) -> Sequence[Alert]:
         query = select(Alert).where(Alert.reminder_id == reminder_id).order_by(Alert.send_at_utc)
         return (await self._session.scalars(query)).all()

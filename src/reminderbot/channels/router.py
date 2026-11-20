@@ -5,13 +5,13 @@ through the Channel interface, so the same logic works on every channel and is
 easy to test with a fake channel.
 """
 
-from datetime import datetime
-
 from reminderbot.channels.base import Button, Channel, IncomingEvent, parse_command
+from reminderbot.channels.manage import PICKERS, ReminderCommands
+from reminderbot.channels.natural import CLARIFY_PREFIX, NaturalLanguage
+from reminderbot.channels.replies import send_confirmation
 from reminderbot.clock import Clock
-from reminderbot.core.formatting import format_datetime, format_duration, format_time, join_list
-from reminderbot.core.models import ReminderKind
-from reminderbot.core.reminders import MAX_TITLE_LENGTH, ReminderService, SavedReminder
+from reminderbot.core.formatting import format_time
+from reminderbot.core.reminders import MAX_TITLE_LENGTH, ReminderService
 from reminderbot.core.timeparse import TimeParseError, parse_when, split_remind_args
 from reminderbot.core.users import UserProfile, UserService
 from reminderbot.logging_setup import get_logger
@@ -22,8 +22,6 @@ log = get_logger(__name__)
 # Button data prefix for timezone choices, e.g. "tz:Africa/Accra" or "tz:other".
 TZ_PREFIX = "tz:"
 TZ_OTHER = "other"
-# Button data for "delete reminder 123" is "del:123" (short, well under 64 bytes).
-DELETE_PREFIX = "del:"
 QUICK_TIMEZONES = [
     ("tz.button.accra", "Africa/Accra"),
     ("tz.button.lagos", "Africa/Lagos"),
@@ -37,9 +35,17 @@ def timezone_buttons(lang: str) -> list[list[Button]]:
 
 
 class Router:
-    def __init__(self, users: UserService, reminders: ReminderService, clock: Clock) -> None:
+    def __init__(
+        self,
+        users: UserService,
+        reminders: ReminderService,
+        natural: NaturalLanguage,
+        clock: Clock,
+    ) -> None:
         self._users = users
         self._reminders = reminders
+        self._natural = natural  # plain-language messages (M4)
+        self._manage = ReminderCommands(reminders, natural, clock)  # /list, /done, ... (M5)
         self._clock = clock
 
     async def handle(self, event: IncomingEvent, channel: Channel) -> None:
@@ -68,12 +74,18 @@ class Router:
             await self._ask_timezone(event, user, channel, t("tz.choose", user.language))
         elif command == "help":
             await channel.send_message(event.chat_id, t("help.text", user.language))
+        elif command in ("list", "today", "week"):
+            await self._manage.on_list(
+                event, user, channel, which="all" if command == "list" else command
+            )
+        elif command in PICKERS:  # done, delete, edit
+            await self._manage.on_pick(event, user, channel, action=command)
         elif command is not None:
             await channel.send_message(event.chat_id, t("command.unknown", user.language))
         elif user.awaiting_timezone:
             await self._save_timezone(event, user, channel, event.text)
         else:
-            await channel.send_message(event.chat_id, t("fallback.not_yet", user.language))
+            await self._natural.on_text(event, user, channel)
 
     async def _on_start(self, event: IncomingEvent, user: UserProfile, channel: Channel) -> None:
         name = user.name or t("start.friend", user.language)
@@ -91,8 +103,10 @@ class Router:
 
     async def _on_button(self, event: IncomingEvent, user: UserProfile, channel: Channel) -> None:
         data = event.button_data or ""
-        if data.startswith(DELETE_PREFIX):
-            await self._on_delete(event, user, channel, data.removeprefix(DELETE_PREFIX))
+        if await self._manage.on_button(event, user, channel, data):
+            return  # done / delete / edit / snooze
+        if data.startswith(CLARIFY_PREFIX):
+            await self._natural.on_button(event, user, channel, data.removeprefix(CLARIFY_PREFIX))
             return
         if not data.startswith(TZ_PREFIX):
             log.warning("unknown_button", data_len=len(data))
@@ -152,37 +166,4 @@ class Router:
             alerts=len(saved.alert_times),
         )
 
-        text = confirmation_text(saved, user, now)
-        if when.time_defaulted:
-            text += "\n" + t("remind.default_time", lang)
-        buttons = [[Button(t("button.delete", lang), f"{DELETE_PREFIX}{saved.id}")]]
-        await channel.send_buttons(event.chat_id, text, buttons)
-
-    async def _on_delete(
-        self, event: IncomingEvent, user: UserProfile, channel: Channel, raw_id: str
-    ) -> None:
-        # Button data comes from the user's device, so check it before trusting it.
-        if not raw_id.isdigit():
-            log.warning("bad_delete_button", data_len=len(raw_id))
-            return
-        deleted = await self._reminders.delete(user.id, int(raw_id))
-        key = "remind.deleted" if deleted else "remind.already_gone"
-        await channel.send_message(event.chat_id, t(key, user.language))
-
-
-def confirmation_text(saved: SavedReminder, user: UserProfile, now: datetime) -> str:
-    """'Got it. DS assignment, due Fri 21 Nov, 5:00 PM. I'll remind you 1 day before, ...'"""
-    lang = user.language
-    due = format_datetime(saved.due_at_utc, user.timezone)
-    if saved.kind == ReminderKind.AT_TIME:
-        return t("remind.saved_at_time", lang, title=saved.title, due=due)
-
-    parts = []
-    for when in saved.alert_times:
-        if when <= now:
-            parts.append(t("remind.alert_now", lang))
-        else:
-            before = format_duration(saved.due_at_utc - when, lang)
-            parts.append(t("remind.alert_before", lang, duration=before))
-    alerts = join_list(parts, lang)
-    return t("remind.saved_deadline", lang, title=saved.title, due=due, alerts=alerts)
+        await send_confirmation(channel, event.chat_id, saved, user, now, when.time_defaulted)

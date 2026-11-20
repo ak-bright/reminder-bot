@@ -3,12 +3,16 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from reminderbot.ai.parser import ParserError
+from reminderbot.ai.schemas import ParsedMessage
 from reminderbot.channels.base import Button, Channel
+from reminderbot.channels.natural import NaturalLanguage
 from reminderbot.channels.router import Router
 from reminderbot.clock import FakeClock
 from reminderbot.core.reminders import ReminderService
 from reminderbot.core.users import UserService
 from reminderbot.db.base import Base
+from reminderbot.db.clarification_store import SqlClarificationStore
 from reminderbot.db.reminder_store import SqlReminderStore
 from reminderbot.db.session import create_engine, create_session_factory
 from reminderbot.db.user_store import SqlUserStore
@@ -54,9 +58,40 @@ def reminders(session_factory, clock) -> ReminderService:
     return ReminderService(SqlReminderStore(session_factory), clock)
 
 
+class FakeParser:
+    """Stands in for the AI: returns the answers a test queued up, in order.
+
+    It records what it was asked, so tests can check the input too.
+    """
+
+    def __init__(self) -> None:
+        self.answers: list[ParsedMessage | ParserError] = []
+        self.calls: list[str] = []
+
+    async def parse(self, text: str, now_local: datetime, timezone: str) -> ParsedMessage:
+        self.calls.append(text)
+        answer = self.answers.pop(0)
+        if isinstance(answer, ParserError):
+            raise answer
+        return answer
+
+
 @pytest.fixture
-def router(users: UserService, reminders: ReminderService, clock: FakeClock) -> Router:
-    return Router(users, reminders, clock)
+def parser() -> FakeParser:
+    return FakeParser()
+
+
+@pytest.fixture
+def natural(parser, reminders, session_factory, clock) -> NaturalLanguage:
+    store = SqlClarificationStore(session_factory)
+    return NaturalLanguage(parser, reminders, store, clock, max_input_chars=2000)
+
+
+@pytest.fixture
+def router(
+    users: UserService, reminders: ReminderService, natural: NaturalLanguage, clock: FakeClock
+) -> Router:
+    return Router(users, reminders, natural, clock)
 
 
 # --- Database -------------------------------------------------------------------

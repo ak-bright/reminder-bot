@@ -2,6 +2,7 @@
 
 import pytest
 
+from reminderbot.ai.schemas import ParsedMessage
 from reminderbot.channels.base import IncomingEvent, parse_command
 from reminderbot.strings import t
 
@@ -113,9 +114,11 @@ async def test_unknown_command(router, channel):
     assert channel.last["text"] == t("command.unknown")
 
 
-async def test_plain_text_is_not_supported_yet(router, channel):
-    await router.handle(msg("Data structures assignment due Friday 5pm"), channel)
-    assert channel.last["text"] == t("fallback.not_yet")
+async def test_plain_text_goes_to_the_parser(router, channel, parser):
+    parser.answers.append(ParsedMessage(intent="other", items=[]))
+    await router.handle(msg("hello there"), channel)
+    assert parser.calls == ["hello there"]
+    assert channel.last["text"] == t("nl.not_understood")
 
 
 async def test_users_are_kept_separate(router, channel, users):

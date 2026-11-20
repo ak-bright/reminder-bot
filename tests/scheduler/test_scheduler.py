@@ -23,11 +23,12 @@ class FlakyChannel(FakeChannel):
         super().__init__()
         self.failures = failures
 
-    async def send_message(self, chat_id: str, text: str) -> None:
+    async def send_buttons(self, chat_id: str, text: str, buttons) -> None:
+        # Alerts are sent with buttons ([Done] [Snooze 1h] [Snooze tomorrow]).
         if self.failures > 0:
             self.failures -= 1
             raise ConnectionError("Telegram is down")
-        await super().send_message(chat_id, text)
+        await super().send_buttons(chat_id, text, buttons)
 
 
 class Crash(BaseException):
@@ -260,7 +261,7 @@ async def test_crash_before_sending_is_retried_after_5_minutes(
         raise Crash
 
     with monkeypatch.context() as patch:
-        patch.setattr(channel, "send_message", crash)
+        patch.setattr(channel, "send_buttons", crash)
         with pytest.raises(Crash):
             await make_scheduler(session_factory, channel, clock).tick()
     [alert] = await alerts(session_factory)
